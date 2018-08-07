@@ -21,4 +21,4 @@ release:
 deploy:
   stage: deploy
   script:
-    - ssh root@142.93.11.143 'cd main && ./restart'
+    - ssh -o StrictHostKeyChecking=no root@142.93.11.143 'cd main && ./restart'
