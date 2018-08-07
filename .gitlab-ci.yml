@@ -1,5 +1,6 @@
 stages:
   - build
+  - release
   - deploy
 
 before_script:
@@ -12,7 +13,12 @@ build:
     - docker build -t matchmaker .
     - docker tag matchmaker parthmehrotra/matchmaker
     
+release:
+  stage: release
+  script:
+    - docker push parthmehrotra/matchmaker
+    
 deploy:
   stage: deploy
   script:
-    - docker push parthmehrotra/matchmaker
+    - ssh root@142.93.11.143 'cd main && ./restart'
