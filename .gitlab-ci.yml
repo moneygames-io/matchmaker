@@ -15,12 +15,12 @@ build:
   stage: build
   script:
     - docker build -t matchmaker .
-    - docker tag matchmaker parthmehrotra/matchmaker
+    - docker tag matchmaker moneygames/matchmaker
     
 release:
   stage: release
   script:
-    - docker push parthmehrotra/matchmaker
+    - docker push moneygames/matchmaker
     
 deploy:
   stage: deploy
