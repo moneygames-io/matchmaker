@@ -15,12 +15,12 @@ build:
   stage: build
   script:
     - docker build -t matchmaker .
-    - docker tag matchmaker moneygames/matchmaker
+    - docker tag matchmaker moneygames/matchmaker:$(git rev-parse --abbrev-ref HEAD)
     
 release:
   stage: release
   script:
-    - docker push moneygames/matchmaker
+    - docker push moneygames/matchmaker:$(git rev-parse --abbrev-ref HEAD)
     
 deploy:
   stage: deploy
