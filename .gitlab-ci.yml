@@ -15,14 +15,16 @@ build:
   stage: build
   script:
     - docker build -t matchmaker .
-    - docker tag matchmaker moneygames/matchmaker:$(git rev-parse --abbrev-ref HEAD)
+    - docker tag matchmaker moneygames/matchmaker:$CI_COMMIT_REF_NAME
     
 release:
   stage: release
   script:
-    - docker push moneygames/matchmaker:$(git rev-parse --abbrev-ref HEAD)
+    - docker push moneygames/matchmaker:$CI_COMMIT_REF_NAME
     
 deploy:
   stage: deploy
+  only:
+    - master
   script:
     - ssh root@142.93.11.143 'cd main && ./restart'
