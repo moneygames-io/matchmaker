@@ -1,1 +1,1 @@
-docker build -t matchmaker . && docker tag matchmaker moneygames/matchmaker && docker push moneygames/matchmaker
+docker build -t matchmaker . && docker tag matchmaker moneygames/matchmaker:$(git rev-parse --abbrev-ref) && docker push moneygames/matchmaker:$(git rev-parse --abbrev-ref)
