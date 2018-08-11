@@ -46,16 +46,18 @@ func (m *Matchmaker) getIdleGameserver() string {
 	keys, _ := c.Keys("*").Result()
 
 	for _, key := range keys {
-		status, _ := c.Get(key).Result()
+		status, _ := c.HGet(key, "status").Result()
 		if status == "idle" {
-			err := c.Set(key, strconv.Itoa(m.CurrentClients), 0).Err()
+			c.HSet(key, "players", strconv.Itoa(m.CurrentClients), 0)
 
-			if err == nil {
-				// TODO before returning you need to check to make sure gameserver is on the same page
-				return key
-			} else {
-				fmt.Println("Could not find idle gameserver")
-				fmt.Println(err)
+			for {
+				currentStatus := c.HGet(key, "status")
+				if currentStatus != "ready" {
+					// TODO This feels bad
+					time.Sleep(1000 * time.Millisecond)
+				} else {
+					return key
+				}
 			}
 		}
 	}
