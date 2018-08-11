@@ -23,7 +23,7 @@ func NewMatchmaker(target int) *Matchmaker {
 	for {
 		fmt.Println("Attempting to connect to redis")
 		client = redis.NewClient(&redis.Options{
-			Addr:     "redis:6379",
+			Addr:     "redis-gameservers:6379",
 			Password: "",
 			DB:       0,
 		})
