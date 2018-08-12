@@ -13,23 +13,29 @@ import (
 type Matchmaker struct {
 	StatusChannels     []chan string
 	GameserverChannels []chan string
-	RedisClient        *redis.Client
+	GameServerRedis    *redis.Client
+	PlayerRedis        *redis.Client
 	CurrentClients     int
 	TargetClients      int
 }
 
 func NewMatchmaker(target int) *Matchmaker {
+	gameServerRedis := connectToRedis("redis-gameservers:6379")
+	playerRedis := connectToRedis("redis-players:6379")
+	return &Matchmaker{nil, nil, gameServerRedis, playerRedis, 0, target}
+}
+
+func connectToRedis(addr string) *redis.Client {
 	var client *redis.Client
 	for {
-		fmt.Println("Attempting to connect to redis")
 		client = redis.NewClient(&redis.Options{
-			Addr:     "redis-gameservers:6379",
+			Addr:     addr,
 			Password: "",
 			DB:       0,
 		})
 		_, err := client.Ping().Result()
 		if err != nil {
-			fmt.Println("Matchmaker could not connect to redis")
+			fmt.Println("Could not connect to redis")
 			fmt.Println(err)
 		} else {
 			break
@@ -37,21 +43,21 @@ func NewMatchmaker(target int) *Matchmaker {
 		time.Sleep(500 * time.Millisecond)
 	}
 	fmt.Println("Connected to redis")
-	return &Matchmaker{nil, nil, client, 0, target}
+	return client
 }
 
 func (m *Matchmaker) getIdleGameserver() string {
-	c := m.RedisClient
+	gameServerRedis := m.GameServerRedis
 
-	keys, _ := c.Keys("*").Result()
+	keys, _ := gameServerRedis.Keys("*").Result()
 
 	for _, key := range keys {
-		status, _ := c.HGet(key, "status").Result()
+		status, _ := gameServerRedis.HGet(key, "status").Result()
 		if status == "idle" {
-			c.HSet(key, "players", strconv.Itoa(m.CurrentClients))
+			gameServerRedis.HSet(key, "players", strconv.Itoa(m.CurrentClients))
 
 			for {
-				currentStatus, _ := c.HGet(key, "status").Result()
+				currentStatus, _ := gameServerRedis.HGet(key, "status").Result()
 				if currentStatus != "ready" {
 					// TODO This feels bad
 					time.Sleep(1000 * time.Millisecond)
@@ -65,7 +71,17 @@ func (m *Matchmaker) getIdleGameserver() string {
 	return ""
 }
 
+// TODO make blocking?
 func (m *Matchmaker) PlayerJoined(conn *websocket.Conn) {
+	message := &RegisterMessage{}
+
+	error := conn.ReadJSON(message)
+
+	if error != nil || !validateToken(message.Token, m.PlayerRedis) {
+		fmt.Println("Closing connection, token invalid", error, message)
+		conn.Close()
+	}
+
 	m.CurrentClients++
 
 	status := make(chan string)
@@ -91,6 +107,12 @@ func (m *Matchmaker) PlayerJoined(conn *websocket.Conn) {
 		m.CurrentClients = 0
 		//TODO  cleanup here
 	}
+}
+
+func validateToken(token string, playerRedis *redis.Client) bool {
+	status, _ := playerRedis.HGet(token, "status").Result()
+	fmt.Println(status)
+	return status == "paid"
 }
 
 func (m *Matchmaker) syncMatchmaker(conn *websocket.Conn, status chan string, gameserver chan string) {
