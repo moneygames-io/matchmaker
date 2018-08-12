@@ -33,7 +33,7 @@ func connectToRedis(addr string) *redis.Client {
 		})
 		_, err := client.Ping().Result()
 		if err != nil {
-			fmt.Println("gameserver could not connect to redis")
+			fmt.Println("Could not connect to redis")
 			fmt.Println(err)
 		} else {
 			break
@@ -41,7 +41,7 @@ func connectToRedis(addr string) *redis.Client {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	fmt.Println("gameserver connected to redis")
+	fmt.Println("Connected to redis")
 
 	return client
 }
