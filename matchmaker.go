@@ -40,9 +40,7 @@ func connectToRedis(addr string) *redis.Client {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-
 	fmt.Println("Connected to redis")
-
 	return client
 }
 
