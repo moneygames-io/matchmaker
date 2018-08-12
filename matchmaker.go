@@ -13,35 +13,41 @@ import (
 type Matchmaker struct {
 	StatusChannels     []chan string
 	GameserverChannels []chan string
-	RedisClient        *redis.Client
+	GameServerRedis        *redis.Client
 	CurrentClients     int
 	TargetClients      int
 }
 
 func NewMatchmaker(target int) *Matchmaker {
+	gameServerRedis := connectToRedis("redis-gameservers:6379")
+	return &Matchmaker{nil, nil, gameServerRedis, 0, target}
+}
+
+func connectToRedis(addr string) *redis.Client {
 	var client *redis.Client
 	for {
-		fmt.Println("Attempting to connect to redis")
 		client = redis.NewClient(&redis.Options{
-			Addr:     "redis-gameservers:6379",
+			Addr:     addr,
 			Password: "",
 			DB:       0,
 		})
 		_, err := client.Ping().Result()
 		if err != nil {
-			fmt.Println("Matchmaker could not connect to redis")
+			fmt.Println("gameserver could not connect to redis")
 			fmt.Println(err)
 		} else {
 			break
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	fmt.Println("Connected to redis")
-	return &Matchmaker{nil, nil, client, 0, target}
+
+	fmt.Println("gameserver connected to redis")
+
+	return client
 }
 
 func (m *Matchmaker) getIdleGameserver() string {
-	c := m.RedisClient
+	c := m.GameServerRedis
 
 	keys, _ := c.Keys("*").Result()
 
