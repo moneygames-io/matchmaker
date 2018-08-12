@@ -13,14 +13,16 @@ import (
 type Matchmaker struct {
 	StatusChannels     []chan string
 	GameserverChannels []chan string
-	GameServerRedis        *redis.Client
+	GameServerRedis    *redis.Client
+	PlayerRedis        *redis.Client
 	CurrentClients     int
 	TargetClients      int
 }
 
 func NewMatchmaker(target int) *Matchmaker {
 	gameServerRedis := connectToRedis("redis-gameservers:6379")
-	return &Matchmaker{nil, nil, gameServerRedis, 0, target}
+	playerRedis := connectToRedis("redis-players:6379")
+	return &Matchmaker{nil, nil, gameServerRedis, playerRedis, 0, target}
 }
 
 func connectToRedis(addr string) *redis.Client {
@@ -45,17 +47,17 @@ func connectToRedis(addr string) *redis.Client {
 }
 
 func (m *Matchmaker) getIdleGameserver() string {
-	c := m.GameServerRedis
+	gameServerRedis := m.GameServerRedis
 
-	keys, _ := c.Keys("*").Result()
+	keys, _ := gameServerRedis.Keys("*").Result()
 
 	for _, key := range keys {
-		status, _ := c.HGet(key, "status").Result()
+		status, _ := gameServerRedis.HGet(key, "status").Result()
 		if status == "idle" {
-			c.HSet(key, "players", strconv.Itoa(m.CurrentClients))
+			gameServerRedis.HSet(key, "players", strconv.Itoa(m.CurrentClients))
 
 			for {
-				currentStatus, _ := c.HGet(key, "status").Result()
+				currentStatus, _ := gameServerRedis.HGet(key, "status").Result()
 				if currentStatus != "ready" {
 					// TODO This feels bad
 					time.Sleep(1000 * time.Millisecond)
@@ -69,7 +71,17 @@ func (m *Matchmaker) getIdleGameserver() string {
 	return ""
 }
 
+// TODO make blocking?
 func (m *Matchmaker) PlayerJoined(conn *websocket.Conn) {
+	message := &RegisterMessage{}
+
+	error := conn.ReadJSON(message)
+
+	if error != nil || !validateToken(message.Token, m.PlayerRedis) {
+		fmt.Println("Closing connection, token invalid", error, message)
+		conn.Close()
+	}
+
 	m.CurrentClients++
 
 	status := make(chan string)
@@ -95,6 +107,12 @@ func (m *Matchmaker) PlayerJoined(conn *websocket.Conn) {
 		m.CurrentClients = 0
 		//TODO  cleanup here
 	}
+}
+
+func validateToken(token string, playerRedis *redis.Client) bool {
+	status, _ := playerRedis.HGet(token, "status").Result()
+	fmt.Println(status)
+	return status == "paid"
 }
 
 func (m *Matchmaker) syncMatchmaker(conn *websocket.Conn, status chan string, gameserver chan string) {
