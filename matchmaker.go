@@ -48,10 +48,10 @@ func (m *Matchmaker) getIdleGameserver() string {
 	for _, key := range keys {
 		status, _ := c.HGet(key, "status").Result()
 		if status == "idle" {
-			c.HSet(key, "players", strconv.Itoa(m.CurrentClients), 0)
+			c.HSet(key, "players", strconv.Itoa(m.CurrentClients))
 
 			for {
-				currentStatus := c.HGet(key, "status")
+				currentStatus, _ := c.HGet(key, "status").Result()
 				if currentStatus != "ready" {
 					// TODO This feels bad
 					time.Sleep(1000 * time.Millisecond)
