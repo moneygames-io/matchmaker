@@ -11,7 +11,7 @@ var matchmaker *Matchmaker
 
 func main() {
 	fmt.Println("Matchmaker started")
-	matchmaker = NewMatchmaker(4)
+	matchmaker = NewMatchmaker(3)
 
 	http.HandleFunc("/ws", wsHandler)
 
