@@ -11,18 +11,19 @@ import (
 )
 
 type Matchmaker struct {
-	StatusChannels     []chan string
-	GameserverChannels []chan string
+	StatusChannels     map[string](chan string)
+	GameserverChannels map[string](chan string)
 	GameServerRedis    *redis.Client
 	PlayerRedis        *redis.Client
-	CurrentClients     int
 	TargetClients      int
 }
 
 func NewMatchmaker(target int) *Matchmaker {
 	gameServerRedis := connectToRedis("redis-gameservers:6379")
 	playerRedis := connectToRedis("redis-players:6379")
-	return &Matchmaker{nil, nil, gameServerRedis, playerRedis, 0, target}
+	statusChannels := make(map[string](chan string))
+	gameserverChannels := make(map[string](chan string))
+	return &Matchmaker{statusChannels, gameserverChannels, gameServerRedis, playerRedis, target}
 }
 
 func connectToRedis(addr string) *redis.Client {
@@ -54,7 +55,7 @@ func (m *Matchmaker) getIdleGameserver() string {
 	for _, key := range keys {
 		status, _ := gameServerRedis.HGet(key, "status").Result()
 		if status == "idle" {
-			gameServerRedis.HSet(key, "players", strconv.Itoa(m.CurrentClients))
+			gameServerRedis.HSet(key, "players", strconv.Itoa(len(m.StatusChannels)))
 
 			for {
 				currentStatus, _ := gameServerRedis.HGet(key, "status").Result()
@@ -73,39 +74,45 @@ func (m *Matchmaker) getIdleGameserver() string {
 
 // TODO make blocking?
 func (m *Matchmaker) PlayerJoined(conn *websocket.Conn) {
+
 	message := &RegisterMessage{}
-
 	error := conn.ReadJSON(message)
-
 	if error != nil || !validateToken(message.Token, m.PlayerRedis) {
 		fmt.Println("Closing connection, token invalid", error, message)
 		conn.Close()
 	}
 
-	m.CurrentClients++
-
 	status := make(chan string)
-	m.StatusChannels = append(m.StatusChannels, status)
+	m.StatusChannels[message.Token] = status
 
 	gameserver := make(chan string)
-	m.GameserverChannels = append(m.GameserverChannels, gameserver)
+	m.GameserverChannels[message.Token] = gameserver
 
-	go m.syncMatchmaker(conn, status, gameserver)
+	go monitorDisconect(conn, status)
+	go m.syncMatchmaker(conn, status, gameserver, message.Token)
 
-	for _, statusChannel := range m.StatusChannels {
-		statusChannel <- "nop"
-	}
+	m.updateStatus()
 
-	if m.CurrentClients == m.TargetClients {
+	if len(m.StatusChannels) == m.TargetClients {
 
 		selectedPort := m.getIdleGameserver()
 
 		for _, gameChannel := range m.GameserverChannels {
 			gameChannel <- selectedPort
 		}
+	}
+}
 
-		m.CurrentClients = 0
-		//TODO  cleanup here
+func (m *Matchmaker)updateStatus(){
+	for _, statusChannel := range m.StatusChannels {
+		statusChannel <- "nop"
+	}
+}
+
+func monitorDisconect(conn *websocket.Conn, status chan string){
+	msg := &Msg{}
+	if err := conn.ReadJSON(msg); err != nil {
+		status <- "dc"
 	}
 }
 
@@ -115,13 +122,20 @@ func validateToken(token string, playerRedis *redis.Client) bool {
 	return status == "paid"
 }
 
-func (m *Matchmaker) syncMatchmaker(conn *websocket.Conn, status chan string, gameserver chan string) {
+func (m *Matchmaker) syncMatchmaker(conn *websocket.Conn, status chan string, gameserver chan string, token string) {
 	for {
 		select {
-		case <-status:
+		case msg:= <-status:
+			if msg == "dc"{
+				fmt.Println("DISCONNECTING")
+				delete(m.StatusChannels, token)
+				delete(m.GameserverChannels, token)
+				m.updateStatus()
+				return
+			}
 			if err := conn.WriteJSON(map[string]map[string]int{
 				"Status": {
-					"CurrentClients": m.CurrentClients,
+					"CurrentClients": len(m.StatusChannels),
 					"TargetClients":  m.TargetClients,
 				},
 			}); err != nil {
