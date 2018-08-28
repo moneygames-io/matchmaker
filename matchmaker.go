@@ -103,13 +103,13 @@ func (m *Matchmaker) PlayerJoined(conn *websocket.Conn) {
 	}
 }
 
-func (m *Matchmaker)updateStatus(){
+func (m *Matchmaker) updateStatus() {
 	for _, statusChannel := range m.StatusChannels {
 		statusChannel <- "nop"
 	}
 }
 
-func monitorDisconect(conn *websocket.Conn, status chan string){
+func monitorDisconect(conn *websocket.Conn, status chan string) {
 	msg := &Msg{}
 	if err := conn.ReadJSON(msg); err != nil {
 		status <- "dc"
@@ -125,8 +125,8 @@ func validateToken(token string, playerRedis *redis.Client) bool {
 func (m *Matchmaker) syncMatchmaker(conn *websocket.Conn, status chan string, gameserver chan string, token string) {
 	for {
 		select {
-		case msg:= <-status:
-			if msg == "dc"{
+		case msg := <-status:
+			if msg == "dc" {
 				fmt.Println("DISCONNECTING")
 				delete(m.StatusChannels, token)
 				delete(m.GameserverChannels, token)
