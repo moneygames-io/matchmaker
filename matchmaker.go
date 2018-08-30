@@ -56,6 +56,7 @@ func (m *Matchmaker) getIdleGameserver() string {
 		status, _ := gameServerRedis.HGet(key, "status").Result()
 		if status == "idle" {
 			gameServerRedis.HSet(key, "players", strconv.Itoa(len(m.StatusChannels)))
+			gameServerRedis.HSet(key, "pot", strconv.Itoa(len(m.StatusChannels)))
 
 			for {
 				currentStatus, _ := gameServerRedis.HGet(key, "status").Result()
