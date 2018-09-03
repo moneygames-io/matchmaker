@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -16,14 +17,27 @@ type Matchmaker struct {
 	GameServerRedis    *redis.Client
 	PlayerRedis        *redis.Client
 	TargetClients      int
+	TargetTime         int
+	Countdown          bool
+	Mutex              *sync.Mutex
 }
 
-func NewMatchmaker(target int) *Matchmaker {
+func NewMatchmaker(targetPlayers int, targetTime int) *Matchmaker {
 	gameServerRedis := connectToRedis("redis-gameservers:6379")
 	playerRedis := connectToRedis("redis-players:6379")
 	statusChannels := make(map[string](chan string))
 	gameserverChannels := make(map[string](chan string))
-	return &Matchmaker{statusChannels, gameserverChannels, gameServerRedis, playerRedis, target}
+	mutex := &sync.Mutex{}
+	return &Matchmaker{
+		statusChannels,
+		gameserverChannels,
+		gameServerRedis,
+		playerRedis,
+		targetPlayers,
+		targetTime,
+		false,
+		mutex,
+	}
 }
 
 func connectToRedis(addr string) *redis.Client {
@@ -78,11 +92,12 @@ func (m *Matchmaker) PlayerJoined(conn *websocket.Conn) {
 
 	message := &RegisterMessage{}
 	error := conn.ReadJSON(message)
-	if error != nil || !validateToken(message.Token, m.PlayerRedis) {
+	if error != nil || !m.validateToken(message.Token) {
 		fmt.Println("Closing connection, token invalid", error, message)
 		conn.Close()
 	}
 
+	m.Mutex.Lock()
 	status := make(chan string)
 	m.StatusChannels[message.Token] = status
 
@@ -94,14 +109,24 @@ func (m *Matchmaker) PlayerJoined(conn *websocket.Conn) {
 
 	m.updateStatus()
 
-	if len(m.StatusChannels) == m.TargetClients {
-
-		selectedPort := m.getIdleGameserver()
-
-		for _, gameChannel := range m.GameserverChannels {
-			gameChannel <- selectedPort
-		}
+	if len(m.StatusChannels) >= m.TargetClients && !m.Countdown {
+		go m.StartCountdown()
+		m.Countdown = true
 	}
+	m.Mutex.Unlock()
+
+}
+
+func (m *Matchmaker) StartCountdown() {
+	timer := time.NewTimer(time.Duration(m.TargetTime) * time.Second)
+	<-timer.C
+	m.Mutex.Lock()
+	selectedPort := m.getIdleGameserver()
+	for _, gameChannel := range m.GameserverChannels {
+		gameChannel <- selectedPort
+	}
+	m.Countdown = false
+	m.Mutex.Unlock()
 }
 
 func (m *Matchmaker) updateStatus() {
@@ -117,8 +142,8 @@ func monitorDisconect(conn *websocket.Conn, status chan string) {
 	}
 }
 
-func validateToken(token string, playerRedis *redis.Client) bool {
-	status, _ := playerRedis.HGet(token, "status").Result()
+func (m *Matchmaker) validateToken(token string) bool {
+	status, _ := m.PlayerRedis.HGet(token, "status").Result()
 	fmt.Println(status)
 	return status == "paid"
 }
