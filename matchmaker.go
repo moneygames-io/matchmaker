@@ -108,7 +108,20 @@ func (m *Matchmaker) PlayerJoined(conn *websocket.Conn) {
 }
 
 func (m *Matchmaker) DispatchPlayers() {
-	time.Sleep(time.Duration(m.TargetTime) * time.Second)
+	time.Sleep( 2 * time.Second)
+	for t := m.TargetTime; t >= 0; t-- {
+		for _, c := range m.Players {
+			if err := c.WriteJSON(map[string]map[string]int{
+				"Time": {
+					"Current": t,
+					"Target":  m.TargetTime,
+				},
+			}); err != nil {
+				fmt.Println(err)
+			}
+		}
+		time.Sleep(time.Second)
+	}
 	m.Mutex.Lock()
 	if len(m.Players) >= m.TargetPlayers {
 		selectedPort := m.getIdleGameserver()
@@ -143,8 +156,8 @@ func (m *Matchmaker) RelayPlayers() {
 	for _, c := range m.Players {
 		if err := c.WriteJSON(map[string]map[string]int{
 			"Status": {
-				"CurrentClients": len(m.Players),
-				"TargetClients":  m.TargetPlayers,
+				"Current": len(m.Players),
+				"Target":  m.TargetPlayers,
 			},
 		}); err != nil {
 			fmt.Println(err)
