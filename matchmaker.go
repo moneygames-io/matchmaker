@@ -58,7 +58,7 @@ func connectToRedis(addr string) *redis.Client {
 	return client
 }
 
-func (m *Matchmaker) getIdleGameserver() string {
+func (m *Matchmaker) GetIdleGameserver() string {
 	gameServerRedis := m.GameServerRedis
 
 	keys, _ := gameServerRedis.Keys("*").Result()
@@ -67,7 +67,7 @@ func (m *Matchmaker) getIdleGameserver() string {
 		status, _ := gameServerRedis.HGet(key, "status").Result()
 		if status == "idle" {
 			gameServerRedis.HSet(key, "players", strconv.Itoa(len(m.Players)))
-			gameServerRedis.HSet(key, "pot", "0")
+			gameServerRedis.HSet(key, "pot", getPot(len(m.Players)))
 			for {
 				currentStatus, _ := gameServerRedis.HGet(key, "status").Result()
 				if currentStatus != "ready" {
@@ -81,6 +81,13 @@ func (m *Matchmaker) getIdleGameserver() string {
 	}
 
 	return ""
+}
+
+func getPot(players int) float64 {
+	btc_usd := 3000.0
+	buy_in_usd := 1.0
+	btc_sat := 100000000.0
+	return (buy_in_usd / btc_usd) * btc_sat
 }
 
 func (m *Matchmaker) ValidateToken(token string) bool {
@@ -124,7 +131,7 @@ func (m *Matchmaker) DispatchPlayers() {
 	}
 	m.Mutex.Lock()
 	if len(m.Players) >= m.TargetPlayers {
-		selectedPort := m.getIdleGameserver()
+		selectedPort := m.GetIdleGameserver()
 		for _, c := range m.Players {
 			if err := c.WriteJSON(map[string]string{
 				"Port": selectedPort,
